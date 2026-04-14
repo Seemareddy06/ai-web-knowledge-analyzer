@@ -17,28 +17,49 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 embeddings = HuggingFaceEmbeddings()
 
 
+# =========================
+# 🚀 LOAD + PROCESS URLS (ROBUST)
+# =========================
 def load_and_process_urls(urls):
     docs = []
+
     for url in urls:
-        loader = WebBaseLoader(url)
-        docs.extend(loader.load())
+        try:
+            loader = WebBaseLoader(url)
+            data = loader.load()
+
+            if data:
+                docs.extend(data)
+
+        except Exception as e:
+            print(f"Error loading {url}: {e}")
+
+    if not docs:
+        raise ValueError("No valid content could be loaded from URLs")
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200
     )
+
     split_docs = splitter.split_documents(docs)
 
     vectorstore = FAISS.from_documents(split_docs, embeddings)
     return vectorstore
 
 
+# =========================
+# 🔍 RETRIEVE DOCUMENTS
+# =========================
 def retrieve_docs(vectorstore, query):
     retriever = vectorstore.as_retriever()
     docs = retriever.get_relevant_documents(query)
     return docs
 
 
+# =========================
+# 🤖 LLM CALL
+# =========================
 def ask_llm(context, question):
     prompt = f"""
     You are an AI assistant.
@@ -59,3 +80,25 @@ def ask_llm(context, question):
     )
 
     return response.choices[0].message.content
+
+
+# =========================
+# ⚖️ NEW: GET CONTENT PER URL (FOR ACCURATE COMPARISON)
+# =========================
+def get_content_per_url(urls):
+    url_contents = {}
+
+    for url in urls:
+        try:
+            loader = WebBaseLoader(url)
+            docs = loader.load()
+
+            text = " ".join([doc.page_content for doc in docs])
+
+            # Limit text for LLM (important)
+            url_contents[url] = text[:3000]
+
+        except Exception as e:
+            url_contents[url] = f"Error loading content: {e}"
+
+    return url_contents
